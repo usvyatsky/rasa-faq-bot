@@ -5,7 +5,7 @@ intents:
 - affirm
 - deny
 - bye
-templates:
+responses:
   utter_greet:
   - text: Hello~
   utter_goodbye:
@@ -27,6 +27,4 @@ actions:
 - utter_default
 - utter_ask_need_help
 - utter_ask_need_more_help
-- utter_ask_is_success
 - utter_sorry
-- utter_bye
