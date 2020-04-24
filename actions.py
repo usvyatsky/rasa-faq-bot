@@ -15,11 +15,13 @@ from rasa_sdk.executor import CollectingDispatcher
 import numpy as np
 import os
 import boto3
+import glob
 
 
 bertHost = 'bert'
 BUCKET = 'BUCKET'
 FAQ = 'FAQ'
+VOLUME = 'VOLUME'
 
 
 class ActionGetFAQAnswer(Action):
@@ -52,14 +54,14 @@ class ActionGetFAQAnswer(Action):
             response = self.faq[most_similar_id]['a']
             dispatcher.utter_message(response)
         else:
-            response = "Sorry, this question is beyond my ability..."
+            response = 'Sorry, this question is beyond my ability...'
             dispatcher.utter_message(response)
         return []
 
 
-def get_faq():
+def get_faq(volume):
     bucket = None
-    faq = 'faq.json'
+    faq = None
     if BUCKET in os.environ:
         bucket = os.environ[BUCKET]
     if FAQ in os.environ:
@@ -67,31 +69,42 @@ def get_faq():
     if bucket and faq:
         s3client = boto3.client('s3')
         try:
+            print(f'Fetching s3://{bucket}/{faq}')
             r = s3client.get_object(Bucket=bucket, Key=faq)
             data = json.load(r['Body'])
-            with open(os.path.basename(faq), 'w') as f:
-                json.dump(data, f)
+            faq = f'{volume}/{os.path.basename(faq)}'
+            print(f'Saving {faq}')
+            with open(faq, 'wt', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=4)
             return data
         except Exception as ex:
             print(f'Cannot get FAQ from s3://{bucket}/{faq}: {ex}')
     if not os.path.exists(faq):
-        faq = os.path.basename(faq)
+        faq = f'{volume}/{os.path.basename(faq)}'
+    print(f'Loading FAQ from {faq}')
     if os.path.exists(faq):
-        with open(faq, "rt", encoding="utf-8") as f:
+        with open(faq, 'rt', encoding='utf-8') as f:
             return json.load(f)
     return None
 
 
 def encode_faq(bc):
-    faq = get_faq()
+    volume = '.'
+    if VOLUME in os.environ:
+        volume = os.environ[VOLUME]
+    faq = get_faq(volume)
     questions = [each['q'] for each in faq]
+    with open(f'{volume}/faq.md', 'wt', encoding="utf-8") as f:
+        f.write('## intent:faq\n')
+        for q in questions:
+            f.write(f'- {q}\n')
     print(f'FAQ size {len(questions)}')
     print('Calculating encoder')
     encoder = bc.encode(questions)
-    np.save("./questions", encoder)
+    np.save(f'{volume}/questions', encoder)
     encoder_len = np.sqrt(np.sum(encoder * encoder, axis=1))
-    np.save("./questions_len", encoder_len)
-    print('FAQ encoded')
+    np.save(f'{volume}/questions_len', encoder_len)
+    print(f'FAQ encoded, stored in {" ".join(glob.glob(f"{volume}/*"))}')
     return faq, encoder, encoder_len
 
 
